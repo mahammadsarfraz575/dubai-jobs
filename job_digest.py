@@ -13,10 +13,15 @@ from urllib.parse import quote_plus
 
 # ======================= SETTINGS (edit these) =======================
 SEARCHES = [
+    # Data Analyst
     "data analyst", "junior data analyst", "power bi analyst",
     "business intelligence analyst", "reporting analyst", "MIS analyst",
-    "junior data scientist", "school data analyst", "education data analyst",
-    "assessment data analyst", "data analyst SQL Python",
+    "school data analyst", "education data analyst",
+    # Data Scientist
+    "junior data scientist", "data scientist", "machine learning analyst",
+    # Data Engineer
+    "junior data engineer", "data engineer", "ETL developer",
+    "data engineer SQL Python", "azure data engineer",
 ]
 LOCATIONS = ["Dubai"]          # add "Abu Dhabi", "Sharjah" if you want
 MIN_SALARY_AED = 6000          # monthly. Jobs with NO salary listed are still shown.
@@ -28,12 +33,14 @@ SKIP_TITLE_WORDS = ["senior", "sr.", "sr ", "lead", "head of", "manager", "direc
 # skills from your CV -> points. More points = better match.
 SKILLS = {
     "power bi": 3, "sql": 3, "python": 2, "tableau": 2, "dax": 2, "excel": 1,
-    "machine learning": 2, "etl": 1, "dashboard": 1, "reporting": 1, "kpi": 1,
-    "statistic": 1, "pandas": 1, "fabric": 2, "azure": 1, "snowflake": 1,
+    "machine learning": 2, "etl": 2, "dashboard": 1, "reporting": 1, "kpi": 1,
+    "statistic": 1, "pandas": 1, "fabric": 2, "azure": 1, "snowflake": 2,
     "school": 3, "education": 3, "student": 2, "academic": 2, "university": 1,
+    "data pipeline": 2, "pipeline": 1, "data warehouse": 2, "spark": 1, "airflow": 1,
 }
 TITLE_BONUS = {"data analyst": 5, "bi analyst": 4, "business intelligence": 4,
-               "power bi": 4, "reporting analyst": 3, "data scientist": 3, "mis": 2}
+               "power bi": 4, "reporting analyst": 3, "data scientist": 3, "mis": 2,
+               "data engineer": 4, "etl developer": 3}
 JOOBLE_HOST = "https://jooble.org/api"
 SEEN_FILE, LOG_FILE = "seen_jobs.json", "jobs_log.csv"
 # =====================================================================
@@ -205,10 +212,14 @@ def main():
             for loc in LOCATIONS:
                 total_searches += 1
                 try:
-                    raw += search_jooble(key, q, loc)
+                    found = search_jooble(key, q, loc)
+                    print(f"[DEBUG] '{q}' in {loc}: {len(found)} jobs")
+                    raw += found
                 except Exception as e:
+                    print(f"[DEBUG] '{q}' in {loc}: ERROR {type(e).__name__}: {e}")
                     errors.append(f"{q}/{loc}: {type(e).__name__}")
                 time.sleep(0.5)
+        print(f"[DEBUG] total_searches={total_searches} errors={len(errors)} raw_unique_before_filter={len(raw)}")
 
     unique = {job_key(j): j for j in raw}
     stats = {"raw": len(unique), "seen": 0}
