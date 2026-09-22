@@ -1,6 +1,7 @@
 """
 Daily Dubai job digest for Mahammad Sarfraz.
 Runs on GitHub Actions Mon-Fri, emails a filtered list of NEW jobs.
+Uses JSearch (RapidAPI) - pulls from Google for Jobs, LinkedIn, Indeed, Bayt etc.
 
 Test without internet/email:   python job_digest.py --sample
 """
@@ -13,20 +14,18 @@ from urllib.parse import quote_plus
 
 # ======================= SETTINGS (edit these) =======================
 SEARCHES = [
-    # Data Analyst
-    "data analyst", "junior data analyst", "power bi analyst",
-    "business intelligence analyst", "reporting analyst", "MIS analyst",
-    "school data analyst", "education data analyst",
-    # Data Scientist
-    "junior data scientist", "data scientist", "machine learning analyst",
-    # Data Engineer
-    "junior data engineer", "data engineer", "ETL developer",
-    "data engineer SQL Python", "azure data engineer",
+    # Kept broad and few - the free JSearch plan allows 200 calls/month.
+    # 6 searches x ~22 weekdays = ~132 calls/month, safe under the limit.
+    "data analyst jobs in Dubai",
+    "business intelligence analyst jobs in Dubai",
+    "power bi jobs in Dubai",
+    "data scientist jobs in Dubai",
+    "data engineer jobs in Dubai",
+    "MIS analyst jobs in Dubai",
 ]
-LOCATIONS = ["Dubai"]          # add "Abu Dhabi", "Sharjah" if you want
 MIN_SALARY_AED = 6000          # monthly. Jobs with NO salary listed are still shown.
 MAX_YEARS_REQUIRED = 4         # skip jobs asking for more years than this
-MAX_AGE_DAYS = 3               # skip old postings
+MAX_AGE_DAYS = 5               # skip old postings
 TOP_N = 30                     # max jobs in one email
 SKIP_TITLE_WORDS = ["senior", "sr.", "sr ", "lead", "head of", "manager", "director",
                     "principal", "vp ", "chief", "architect", "intern", "trainee"]
@@ -41,7 +40,7 @@ SKILLS = {
 TITLE_BONUS = {"data analyst": 5, "bi analyst": 4, "business intelligence": 4,
                "power bi": 4, "reporting analyst": 3, "data scientist": 3, "mis": 2,
                "data engineer": 4, "etl developer": 3}
-JOOBLE_HOST = "https://jooble.org/api"
+JSEARCH_HOST = "jsearch.p.rapidapi.com"
 SEEN_FILE, LOG_FILE = "seen_jobs.json", "jobs_log.csv"
 # =====================================================================
 
@@ -114,16 +113,30 @@ def evaluate(j):
     return j
 
 
-def search_jooble(key, keywords, location):
+def search_jsearch(key, query):
     import requests
-    r = requests.post(f"{JOOBLE_HOST}/{key}", json={"keywords": keywords, "location": location, "page": "1"}, timeout=30)
+    headers = {"x-rapidapi-key": key, "x-rapidapi-host": JSEARCH_HOST}
+    params = {"query": query, "page": "1", "num_pages": "1", "date_posted": "3days"}
+    r = requests.get(f"https://{JSEARCH_HOST}/search", headers=headers, params=params, timeout=30)
+    print(f"[DEBUG] HTTP status={r.status_code} body_preview={r.text[:300]!r}")
     r.raise_for_status()
     out = []
-    for x in r.json().get("jobs", []):
+    for x in r.json().get("data", []):
+        lo, hi = x.get("job_min_salary"), x.get("job_max_salary")
+        period = (x.get("job_salary_period") or "").upper()
+        cur = x.get("job_salary_currency") or ""
+        if lo and period == "YEAR":
+            salary_text = f"{cur} {lo:,.0f} - {hi:,.0f} per year" if hi else f"{cur} {lo:,.0f} per year"
+        elif lo:
+            salary_text = f"{cur} {lo:,.0f} - {hi:,.0f} per month" if hi else f"{cur} {lo:,.0f} per month"
+        else:
+            salary_text = ""
+        loc = ", ".join(filter(None, [x.get("job_city"), x.get("job_country")]))
         out.append(dict(
-            id=x.get("id"), title=clean(x.get("title")), company=clean(x.get("company")) or "Not shown",
-            location=clean(x.get("location")), salary=clean(x.get("salary")), snippet=clean(x.get("snippet")),
-            link=x.get("link", ""), source=clean(x.get("source")), updated=x.get("updated", "") or ""))
+            id=x.get("job_id"), title=clean(x.get("job_title")), company=clean(x.get("employer_name")) or "Not shown",
+            location=clean(loc), salary=clean(salary_text), snippet=clean(x.get("job_description"))[:600],
+            link=x.get("job_apply_link", ""), source=clean(x.get("job_publisher")),
+            updated=(x.get("job_posted_at_datetime_utc") or "")[:10]))
     return out
 
 
@@ -157,7 +170,7 @@ def build_html(jobs, stats, errors):
         return (f"<tr><td style='padding:8px;border-bottom:1px solid #ddd'>"
                 f"<a href='{escape(j['link'])}' style='font-weight:bold;font-size:15px'>{escape(j['title'])}</a><br>"
                 f"{escape(j['company'])} &middot; {escape(j['location'])}<br>"
-                f"<b>{money(j['sal'])}</b> &middot; match {j['score']} &middot; via {escape(j['source'] or 'Jooble')}"
+                f"<b>{money(j['sal'])}</b> &middot; match {j['score']} &middot; via {escape(j['source'] or 'JSearch')}"
                 f"{' &middot; ' + str(j['yrs']) + '+ yrs asked' if j['yrs'] else ''}<br>"
                 f"<span style='color:#555'>Your CV matches: {escape(', '.join(j['hits']) or 'title only')}</span></td></tr>")
     with_sal = [j for j in jobs if j["sal"]]
@@ -205,21 +218,21 @@ def main():
     if sample:
         raw = SAMPLE_JOBS
     else:
-        key = os.environ.get("JOOBLE_API_KEY")
+        key = os.environ.get("RAPIDAPI_KEY")
         if not key:
-            sys.exit("JOOBLE_API_KEY is missing (add it in GitHub > Settings > Secrets).")
+            sys.exit("RAPIDAPI_KEY is missing (add it in GitHub > Settings > Secrets).")
+        print(f"[DEBUG] key length={len(key)} first4={key[:4]}")
         for q in SEARCHES:
-            for loc in LOCATIONS:
-                total_searches += 1
-                try:
-                    found = search_jooble(key, q, loc)
-                    print(f"[DEBUG] '{q}' in {loc}: {len(found)} jobs")
-                    raw += found
-                except Exception as e:
-                    print(f"[DEBUG] '{q}' in {loc}: ERROR {type(e).__name__}: {e}")
-                    errors.append(f"{q}/{loc}: {type(e).__name__}")
-                time.sleep(0.5)
-        print(f"[DEBUG] total_searches={total_searches} errors={len(errors)} raw_unique_before_filter={len(raw)}")
+            total_searches += 1
+            try:
+                found = search_jsearch(key, q)
+                print(f"[DEBUG] '{q}': {len(found)} jobs")
+                raw += found
+            except Exception as e:
+                print(f"[DEBUG] '{q}': ERROR {type(e).__name__}: {e}")
+                errors.append(f"{q}: {type(e).__name__}")
+            time.sleep(1)
+        print(f"[DEBUG] total_searches={total_searches} errors={len(errors)} raw_before_dedup={len(raw)}")
 
     unique = {job_key(j): j for j in raw}
     stats = {"raw": len(unique), "seen": 0}
@@ -232,6 +245,7 @@ def main():
         if e:
             e["key"] = k
             fresh.append(e)
+    print(f"[DEBUG] unique={len(unique)} already_seen={stats['seen']} passed_filters={len(fresh)}")
     fresh.sort(key=lambda j: (j["sal"] is None, -j["score"]))
     fresh = fresh[:TOP_N]
 
