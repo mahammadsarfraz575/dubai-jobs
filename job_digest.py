@@ -116,8 +116,8 @@ def evaluate(j):
 def search_jsearch(key, query):
     import requests
     headers = {"x-rapidapi-key": key, "x-rapidapi-host": JSEARCH_HOST}
-    params = {"query": query, "page": "1", "num_pages": "1", "date_posted": "3days"}
-    r = requests.get(f"https://{JSEARCH_HOST}/search", headers=headers, params=params, timeout=30)
+    params = {"query": query, "country": "ae", "page": "1", "num_pages": "1", "date_posted": "3days"}
+    r = requests.get(f"https://{JSEARCH_HOST}/search-v2", headers=headers, params=params, timeout=30)
     print(f"[DEBUG] HTTP status={r.status_code} body_preview={r.text[:300]!r}")
     r.raise_for_status()
     out = []
