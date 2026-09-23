@@ -121,7 +121,7 @@ def search_jsearch(key, query):
     print(f"[DEBUG] HTTP status={r.status_code} body_preview={r.text[:300]!r}")
     r.raise_for_status()
     out = []
-    for x in r.json().get("data", []):
+    for x in r.json().get("data", {}).get("jobs", []):
         lo, hi = x.get("job_min_salary"), x.get("job_max_salary")
         period = (x.get("job_salary_period") or "").upper()
         cur = x.get("job_salary_currency") or ""
