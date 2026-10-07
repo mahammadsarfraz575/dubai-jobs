@@ -2,10 +2,13 @@ name: Daily Dubai job digest
 
 on:
   schedule:
-    # 01:00 UTC = 05:00 Dubai time, Monday to Friday.
-    # GitHub can run late by 5-30 min, so this gives extra buffer before 6:00.
-    - cron: "0 1 * * 1-5"
-  workflow_dispatch:   # lets you press "Run workflow" to test
+    # 01:45 UTC = 05:45 Dubai time, Monday to Friday.
+    # Scheduled a few minutes before the hour on purpose - GitHub's free
+    # scheduler gets congested right at :00, so jobs queued there are the
+    # most likely to run late. This timing gives the best chance of the
+    # email landing by 6:00 without you touching anything.
+    - cron: "45 1 * * 1-5"
+  workflow_dispatch:   # lets you press "Run workflow" to test manually if ever needed
 
 permissions:
   contents: write
